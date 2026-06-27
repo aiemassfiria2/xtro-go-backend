@@ -40,7 +40,11 @@ ASTRO_SG_HOST = "sg-sg-sg.astro.com.my"
 logging.basicConfig(level=logging.INFO, format="[%(asctime)s] %(message)s")
 log = logging.getLogger("astro-backend")
 
+from werkzeug.middleware.proxy_fix import ProxyFix
+
+# Trust Render's proxy headers
 app = flask.Flask(__name__)
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
 
 # In-memory device store: {device_code: {status, token, ...}}
 devices = {}
@@ -332,9 +336,9 @@ def refresh_access_token(refresh_token):
 def device_start():
     """Generate a new device code and return QR data."""
     code = generate_device_code()
-    # Check if we're behind a proxy (Render, etc.)
+    # Detect scheme when behind a reverse proxy (Render, etc.)
     host = flask.request.host
-    scheme = flask.request.scheme
+    scheme = flask.request.headers.get("X-Forwarded-Proto", flask.request.scheme)
 
     # Render passes the original host and uses https
     login_url = f"{scheme}://{host}/login?code={code}"
