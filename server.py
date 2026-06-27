@@ -332,7 +332,12 @@ def refresh_access_token(refresh_token):
 def device_start():
     """Generate a new device code and return QR data."""
     code = generate_device_code()
-    login_url = f"http://{flask.request.host.split(':')[0]}:{PORT}/login?code={code}"
+    # Check if we're behind a proxy (Render, etc.)
+    host = flask.request.host
+    scheme = flask.request.scheme
+
+    # Render passes the original host and uses https
+    login_url = f"{scheme}://{host}/login?code={code}"
 
     devices[code] = {
         "status": "pending",
@@ -567,7 +572,7 @@ if __name__ == "__main__":
     templates_dir.mkdir(exist_ok=True)
 
     log.info(f"Starting Astro GO Backend v2 on port {PORT}")
-    log.info(f"Login URL: http://YOUR_SERVER_IP:{PORT}/login?code=<code>")
+    log.info(f"Login URL: https://YOUR_RENDER_URL/login?code=<code>")
     log.info(f"Device API: http://YOUR_SERVER_IP:{PORT}/api/device/start")
     log.info(f"Status API: http://YOUR_SERVER_IP:{PORT}/api/device/status/<code>")
 
