@@ -420,7 +420,66 @@ def login_page():
     code = flask.request.args.get("code", "")
     if not code or code not in devices:
         return "Invalid or expired login code", 400
-    return flask.render_template("login.html", code=code)
+    
+    # Serve inline template (bypasses old template file on Render)
+    return flask.render_template_string("""<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Astro GO - Link Your TV</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #0A1628 0%, #1A3A6E 100%);
+            min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px;
+        }
+        .card { background: white; border-radius: 16px; padding: 40px; width: 100%; max-width: 440px; box-shadow: 0 20px 60px rgba(0,0,0,0.3); }
+        .logo { text-align: center; margin-bottom: 25px; }
+        .logo h1 { color: #1A3A6E; font-size: 24px; }
+        .logo .play-icon { width: 60px; height: 60px; background: #FFD700; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; margin-bottom: 10px; }
+        .logo .play-icon::after { content: ""; display: block; width: 0; height: 0; border-style: solid; border-width: 12px 0 12px 20px; border-color: transparent transparent transparent #0A1628; margin-left: 4px; }
+        .step { display: flex; gap: 12px; margin-bottom: 16px; align-items: flex-start; }
+        .step-num { background: #FFD700; color: #0A1628; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 14px; flex-shrink: 0; margin-top: 2px; }
+        .step-content { flex: 1; }
+        .step-content h3 { font-size: 15px; color: #333; margin-bottom: 4px; }
+        .step-content p { font-size: 13px; color: #888; line-height: 1.4; }
+        .code-badge { text-align: center; margin: 20px 0; background: #f5f5f5; border-radius: 12px; padding: 16px; }
+        .code-badge .label { font-size: 12px; color: #888; text-transform: uppercase; letter-spacing: 1px; }
+        .code-badge .code { font-size: 32px; font-weight: bold; color: #1A3A6E; letter-spacing: 6px; font-family: monospace; margin-top: 4px; }
+        .form-group { margin-bottom: 16px; }
+        label { display: block; margin-bottom: 6px; color: #666; font-size: 14px; font-weight: 500; }
+        textarea { width: 100%; padding: 14px 16px; border: 2px solid #e0e0e0; border-radius: 10px; font-size: 14px; font-family: monospace; transition: border-color 0.2s; resize: vertical; min-height: 80px; word-break: break-all; }
+        textarea:focus { outline: none; border-color: #FFD700; }
+        button { width: 100%; padding: 14px; background: #FFD700; color: #0A1628; border: none; border-radius: 10px; font-size: 16px; font-weight: 600; cursor: pointer; transition: background 0.2s; }
+        button:hover { background: #E6C200; }
+        button:disabled { background: #ccc; cursor: not-allowed; }
+        .hint { text-align: center; margin-top: 20px; color: #999; font-size: 13px; line-height: 1.5; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <div class="logo"><div class="play-icon"></div><h1>Astro GO</h1></div>
+        <div class="code-badge"><div class="label">Your TV Code</div><div class="code">{{ code }}</div></div>
+
+        <div class="step"><div class="step-num">1</div><div class="step-content"><h3>Login to Astro</h3><p>Open a new tab and go to <strong>auth.astro.com.my</strong>. Sign in with your <strong>email or phone number</strong>.</p></div></div>
+        <div class="step"><div class="step-num">2</div><div class="step-content"><h3>Copy the URL</h3><p>After login, the browser will try to redirect. <strong>Copy the full URL</strong> from the address bar. It contains <code>#access_token=</code>.</p></div></div>
+        <div class="step"><div class="step-num">3</div><div class="step-content"><h3>Paste below</h3><p>Paste the full URL here and click Link Device.</p></div></div>
+
+        <form action="/login/submit" method="POST">
+            <input type="hidden" name="code" value="{{ code }}">
+            <div class="form-group">
+                <label for="pasted_url">Paste URL here:</label>
+                <textarea id="pasted_url" name="pasted_url" placeholder="https://astrogo.astro.com.my/#access_token=xxx..." required></textarea>
+            </div>
+            <button type="submit">🔗 Link Device</button>
+        </form>
+        <div class="hint">Use your Astro ID email or phone number to login at auth.astro.com.my</div>
+    </div>
+</body>
+</html>
+""", code=code)
 
 
 @app.route("/login/submit", methods=["POST"])
@@ -428,6 +487,15 @@ def login_submit():
     """User pastes the URL containing the token from Astro login."""
     code = flask.request.form.get("code", "")
     pasted_url = flask.request.form.get("pasted_url", "")
+    
+    # Also support old form (email/password) - convert to pasted_url format
+    email = flask.request.form.get("email", "")
+    if not pasted_url and email:
+        # User submitted email/password - redirect to instructions
+        return flask.render_template("login.html",
+            code=code,
+            error="",  # Don't show error, just show instructions
+        )
 
     if not code or code not in devices:
         return flask.jsonify({"status": "error", "error": "Invalid code"}), 400
