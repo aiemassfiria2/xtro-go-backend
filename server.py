@@ -57,8 +57,7 @@ devices = {}
 def create_default_templates(templates_dir):
     """Create default HTML templates on first run."""
     login_html = templates_dir / "login.html"
-    if not login_html.exists():
-        login_html.write_text('''<!DOCTYPE html>
+    login_html.write_text('''<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
