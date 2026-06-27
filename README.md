@@ -41,3 +41,4 @@ python server.py
 2. User opens URL on phone → logs in at Astro → pastes URL
 3. Roku polls `/api/device/status/<code>` → gets access token
 4. Roku uses token to call Astro's API (via proxy or directly)
+# Force deploy
