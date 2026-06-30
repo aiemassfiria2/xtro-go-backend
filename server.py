@@ -61,6 +61,24 @@ def save_devices(devices):
     with open(DEVICES_FILE, 'w') as f:
         json.dump(devices, f)
 
+def get_devices():
+    """Always read fresh from file to sync across gunicorn workers."""
+    return load_devices()
+
+def set_device(code, key, value):
+    """Set a device field and persist to file immediately."""
+    devices = load_devices()
+    if code not in devices:
+        return False
+    devices[code][key] = value
+    save_devices(devices)
+    return True
+
+def delete_device(code):
+    devices = load_devices()
+    devices.pop(code, None)
+    save_devices(devices)
+
 devices = load_devices()
 
 
@@ -344,11 +362,11 @@ def refresh_access_token(refresh_token):
 # ============================================================
 # Device Auth API
 # ============================================================
-
 @app.route("/api/device/start")
 def device_start():
     """Generate a new device code and return QR data."""
     code = generate_device_code()
+    
     # Detect scheme when behind a reverse proxy (Render, etc.)
     host = flask.request.host
     scheme = flask.request.headers.get("X-Forwarded-Proto", flask.request.scheme)
@@ -356,7 +374,8 @@ def device_start():
     # Render passes the original host and uses https
     login_url = f"{scheme}://{host}/login?code={code}"
 
-    devices[code] = {
+    all_devices = get_devices()
+    all_devices[code] = {
         "status": "pending",
         "created_at": time.time(),
         "access_token": None,
@@ -364,7 +383,7 @@ def device_start():
         "email": None,
         "error": None,
     }
-    save_devices(devices)
+    save_devices(all_devices)
 
     qr_b64 = create_qr_code_base64(login_url)
 
@@ -380,13 +399,14 @@ def device_start():
 @app.route("/api/device/status/<code>")
 def device_status(code):
     """Check login status for a device code."""
-    device = devices.get(code)
+    all_devices = get_devices()
+    device = all_devices.get(code)
     if not device:
         return flask.jsonify({"status": "error", "error": "Invalid code"}), 404
 
     if time.time() - device["created_at"] > 600:
         device["status"] = "expired"
-        save_devices(devices)
+        save_devices(all_devices)
         return flask.jsonify({"status": "expired"})
 
     resp = {"status": device["status"]}
@@ -433,8 +453,9 @@ def device_refresh(code):
 @app.route("/login")
 def login_page():
     """Phone login page with instructions."""
+    all_devices = get_devices()
     code = flask.request.args.get("code", "")
-    if not code or code not in devices:
+    if not code or code not in all_devices:
         return "Invalid or expired login code", 400
     
     # Serve inline template (bypasses old template file on Render)
@@ -501,6 +522,7 @@ def login_page():
 @app.route("/login/submit", methods=["POST"])
 def login_submit():
     """User pastes the URL containing the token from Astro login."""
+    all_devices = get_devices()
     code = flask.request.form.get("code", "")
     pasted_url = flask.request.form.get("pasted_url", "")
     
@@ -513,7 +535,7 @@ def login_submit():
             error="",  # Don't show error, just show instructions
         )
 
-    if not code or code not in devices:
+    if not code or code not in all_devices:
         return flask.jsonify({"status": "error", "error": "Invalid code"}), 400
     if not pasted_url:
         return flask.render_template("login_error.html",
@@ -557,11 +579,11 @@ def login_submit():
             except Exception:
                 pass
 
-    devices[code]["status"] = "authenticated"
-    devices[code]["access_token"] = access_token
-    devices[code]["refresh_token"] = refresh_token
-    devices[code]["email"] = email
-    save_devices(devices)
+    all_devices[code]["status"] = "authenticated"
+    all_devices[code]["access_token"] = access_token
+    all_devices[code]["refresh_token"] = refresh_token
+    all_devices[code]["email"] = email
+    save_devices(all_devices)
     log.info(f"Token captured for code {code}" +
              (f" (email: {email})" if email else ""))
 
